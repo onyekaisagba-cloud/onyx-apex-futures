@@ -50,7 +50,15 @@ def dispatch_to_discord(audit):
 
     timestamp = datetime.now(onyx_tz).strftime("%H:%M")
     
-    # --- INSTITUTIONAL EXECUTION FORMAT ---
+    # 🟢 Pulling the Micro Specs from our Engine
+    spec = futures_engine.FUTURES_SPECS.get(audit['ticker'])
+    micro_ticker = spec.get('micro', 'N/A')
+    
+    # Calculate Risk for 1 Full vs 1 Micro
+    full_risk = futures_engine.calculate_risk_params(audit['ticker'], audit['E'], audit['SL'])
+    micro_val = spec['tick_value'] / 10 # Standard 1/10th ratio for most micros
+    micro_risk = full_risk['ticks'] * micro_val
+
     content = (
         f"🏛️ **ONYX APEX | MACRO SNIPER SIGNAL**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -63,26 +71,16 @@ def dispatch_to_discord(audit):
         f"┣ **Entry (E):** `{audit['E']}`\n"
         f"┣ **Stop Loss (SL):** `{audit['SL']}`\n"
         f"┣ **Take Profit (TP):** `{audit['TP']}`\n"
-        f"┣ **Risk/Reward:** `1:2.0`\n"
+        f"┣ ━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"┣ ⚖️ **RISK ALLOCATION (1 Contract)**\n"
+        f"┣ **Standard ({audit['ticker']}):** `${full_risk['risk_per_con']}` Risk\n"
+        f"┣ **Micro ({micro_ticker}):** `${round(micro_risk, 2)}` Risk\n"
         f"┗ ━━━━━━━━━━━━━━━━━━━━━━\n"
         f"**AI Advisory:** *{audit['ai_advisory']}*"
     )
     
     try:
         requests.post(webhook_url, json={"content": content}, timeout=10)
-        logger.info(f"✅ Apex Dispatch successful for {audit['ticker']}")
+        logger.info(f"✅ Multi-Contract Dispatch successful for {audit['ticker']}")
     except Exception as e:
         logger.error(f"❌ Dispatch failed: {e}")
-
-if __name__ == "__main__":
-    scheduler = BackgroundScheduler(timezone=onyx_tz)
-    scheduler.add_job(run_apex_scan, 'interval', minutes=15, id='apex_scanner')
-    
-    scheduler.start()
-    logger.info("🚀 ONYX APEX: Global Futures Engine Active | 15m Advisory Mode")
-
-    try:
-        while True:
-            time.sleep(60)
-    except (KeyboardInterrupt, SystemExit):
-        scheduler.shutdown()
