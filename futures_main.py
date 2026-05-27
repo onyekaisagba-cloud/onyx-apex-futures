@@ -88,3 +88,18 @@ def dispatch_to_discord(audit):
         logger.info(f"✅ Multi-Contract Dispatch successful for {display_name}")
     except Exception as e:
         logger.error(f"❌ Dispatch failed: {e}")
+if __name__ == "__main__":
+    # Initialize Scheduler for 15-minute high-velocity scans
+    scheduler = BackgroundScheduler(timezone=onyx_tz)
+    scheduler.add_job(run_apex_scan, 'interval', minutes=15, id='apex_scanner')
+    
+    scheduler.start()
+    logger.info("🚀 ONYX APEX: Global Futures Engine Active | 15m Advisory Mode")
+
+    # 🟢 THE RESTART FIX: This loop forces the process to stay open
+    try:
+        while True:
+            time.sleep(10) 
+    except (KeyboardInterrupt, SystemExit):
+        scheduler.shutdown()
+        logger.info("🛑 Onyx Apex shutting down...")
