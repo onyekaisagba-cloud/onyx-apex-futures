@@ -66,12 +66,15 @@ def calculate_risk_params(symbol, entry, stop):
 # --- REMAINING UTILITIES PRESERVED ---
 
 if __name__ == "__main__":
-    # Test for /NQ Execution Logic
-    test_price = 18522.10
-    test_atr = 25.0
-    levels = calculate_execution_levels("/NQ", test_price, test_atr)
+    scheduler = BackgroundScheduler(timezone=onyx_tz)
+    scheduler.add_job(run_apex_scan, 'interval', minutes=15, id='apex_scanner')
     
-    logger.info(f"🧪 APEX TEST [/NQ]: E: {levels['E']} | SL: {levels['SL']} | TP: {levels['TP']}")
-    
-    risk = calculate_risk_params("/NQ", levels['E'], levels['SL'])
-    logger.info(f"⚠️ RISK PROFILE: ${risk['risk_per_con']} per contract.")
+    scheduler.start()
+    logger.info("🚀 ONYX APEX: Global Futures Engine Active | 15m Advisory Mode")
+
+    # 🟢 CRITICAL: This loop keeps the Render instance alive!
+    try:
+        while True:
+            time.sleep(10) # Reduced from 60 to 10 for better responsiveness
+    except (KeyboardInterrupt, SystemExit):
+        scheduler.shutdown()
