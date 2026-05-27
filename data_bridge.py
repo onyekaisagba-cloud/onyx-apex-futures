@@ -6,12 +6,12 @@ logger = logging.getLogger("OnyxApexData")
 
 # Mapping Yahoo-style Futures Symbols to our Apex Standard
 SYMBOL_MAP = {
-    "/NQ": "NQ=F", "/MNQ": "MNQ=F",
-    "/ES": "ES=F", "/MES": "MES=F",
-    "/ZN": "ZN=F", "/MYM": "MYM=F",
-    "/6E": "EURUSD=X", "/M6E": "E7=F",
-    "/CL": "CL=F", "/MCL": "MCL=F",
-    "/BTC": "BTC=F", "/MBT": "MBT=F"
+    "/NQ": {"yahoo": "NQ=F", "alias": "NAS100"},
+    "/ES": {"yahoo": "ES=F", "alias": "US500"},
+    "/CL": {"yahoo": "CL=F", "alias": "WTI"},
+    "/6E": {"yahoo": "EURUSD=X", "alias": "EURUSD"},
+    "/BTC": {"yahoo": "BTC=F", "alias": "BTCUSD"},
+    "/ZN": {"yahoo": "ZN=F", "alias": "UST10Y"}
 }
 
 def get_futures_ohlcv(symbol, period="5d", interval="15m"):
