@@ -19,25 +19,28 @@ def get_futures_ohlcv(symbol, period="5d", interval="15m"):
     Surgically retrieves OHLCV data for the designated contract.
     Standardizes the dataframe for the Onyx Apex Strategy module.
     """
-    yahoo_symbol = SYMBOL_MAP.get(symbol)
-    if not yahoo_symbol:
+    # 🟢 FIX: Extract the 'yahoo' string from the nested dictionary
+    mapping = SYMBOL_MAP.get(symbol)
+    if not mapping:
         logger.error(f"❌ Symbol {symbol} not recognized in APEX Map.")
         return None
+    
+    yahoo_ticker = mapping['yahoo']
 
     try:
-        tk = Ticker(yahoo_symbol)
+        tk = Ticker(yahoo_ticker)
         # Pulling intraday data
         df = tk.history(period=period, interval=interval)
         
-        if df.empty:
-            logger.warning(f"⚠️ No data returned for {symbol}")
+        if df is None or df.empty:
+            logger.warning(f"⚠️ No data returned for {symbol} ({yahoo_ticker})")
             return None
 
         # Clean index for multi-index responses
         if isinstance(df.index, pd.MultiIndex):
-            df = df.xs(yahoo_symbol)
+            df = df.xs(yahoo_ticker)
 
-        # Standardizing column names to match our strategy module
+        # Standardizing column names
         df.rename(columns={
             'open': 'Open',
             'high': 'High',
