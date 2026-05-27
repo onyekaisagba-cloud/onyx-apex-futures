@@ -6,4 +6,4 @@ pyyaml
 yahooquery
 python-dotenv
 waitress
-google-generativeai
+google-genai
