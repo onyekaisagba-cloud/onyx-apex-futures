@@ -1,26 +1,27 @@
 import os
 import logging
 import pandas as pd
-import google.generativeai as genai
 from datetime import datetime
 from pytz import timezone
+# 🟢 FIX: Switching to the modern GenAI SDK
+from google import genai
 
 logger = logging.getLogger("OnyxApexStrategy")
 onyx_tz = timezone('US/Eastern')
 
-# 🧠 GEMINI CONFIGURATION
+# 🧠 MODERNIZED GEMINI CONFIGURATION
 def get_gemini_macro_advisory(ticker, score):
     """
     Acts as the Macro Analyst for fundamental confluence.
-    Scrapes context to support the technical 2U/2D signal.
+    Utilizes the updated google-genai SDK for reliability.
     """
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         return "Macro context unavailable (API Key missing)."
 
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash-latest') # Fast & Low Latency
+        # 🟢 FIX: Modern Client Initialization
+        client = genai.Client(api_key=api_key)
         
         prompt = (
             f"As a Senior Macro Analyst, provide a one-sentence institutional thesis for {ticker}. "
@@ -28,7 +29,12 @@ def get_gemini_macro_advisory(ticker, score):
             f"Focus on the immediate session trend and any relevant macro tailwinds like DXY or Yields."
         )
         
-        response = model.generate_content(prompt)
+        # 🟢 FIX: Modern Generation Syntax
+        response = client.models.generate_content(
+            model="gemini-2.0-flash", # Using the 2.0 version for maximum speed
+            contents=prompt
+        )
+        
         return response.text.strip()
     except Exception as e:
         logger.error(f"Gemini Analysis Failed: {e}")
