@@ -4,7 +4,7 @@ import logging
 import requests
 import data_bridge
 import strategy_futures
-import futures_engine  # 🧠 Now importing our math/spec engine
+import futures_engine 
 from datetime import datetime
 from pytz import timezone
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -14,35 +14,40 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("OnyxApexMain")
 onyx_tz = timezone('US/Eastern')
 
-# 🎯 THE APEX MACRO GRID
-FUTURES_GRID = ["/NQ", "/MNQ", "/ES", "/MES", "/ZN", "/MYM", "/6E", "/M6E", "/CL", "/MCL", "/BTC", "/MBT"]
+# 🎯 THE APEX MACRO GRID (Option B: Scan Truth only)
+FUTURES_GRID = ["/NQ", "/ES", "/ZN", "/6E", "/CL", "/BTC"]
 
 def run_apex_scan():
     logger.info(f"📡 ONYX APEX: Initiating Global Macro Scan...")
     
     for ticker in FUTURES_GRID:
-        # 1. Fetch Real-Time OHLCV
-        data = data_bridge.get_futures_ohlcv(ticker)
-        if data is None or data.empty: continue
-        
-        # 2. Run High-Conviction Audit
-        audit = strategy_futures.run_strat_audit_futures(ticker, data)
-        
-        # 3. Gatekeeper: Only dispatch if Score >= 5.0
-        if audit['score'] >= 5.0:
-            # 🟢 NEW: Calculate Execution Levels (E, SL, TP)
-            # Pull current price and volatility (ATR proxy) from data
-            current_price = data['Close'].iloc[-1]
-            atr = (data['High'] - data['Low']).rolling(14).mean().iloc[-1]
+        try:
+            # 1. Fetch Real-Time OHLCV
+            data = data_bridge.get_futures_ohlcv(ticker)
+            if data is None or data.empty: continue
             
-            exec_params = futures_engine.calculate_execution_levels(ticker, current_price, atr)
-            audit.update(exec_params) # Merge E, SL, TP into audit data
+            # 2. Run High-Conviction Audit
+            audit = strategy_futures.run_strat_audit_futures(ticker, data)
             
-            # 🧠 NEW: Fetch Gemini Macro Confluence
-            macro_intel = strategy_futures.get_gemini_macro_advisory(ticker, audit['score'])
-            audit['ai_advisory'] = macro_intel
-            
-            dispatch_to_discord(audit)
+            # 3. Gatekeeper: Only dispatch if Score >= 5.0
+            if audit['score'] >= 5.0:
+                current_price = data['Close'].iloc[-1]
+                # Calculate ATR for SL/TP
+                atr = (data['High'] - data['Low']).rolling(14).mean().iloc[-1]
+                
+                exec_params = futures_engine.calculate_execution_levels(ticker, current_price, atr)
+                audit.update(exec_params) 
+                
+                # AI Advisory Hook (Safeguarded)
+                try:
+                    macro_intel = strategy_futures.get_gemini_macro_advisory(ticker, audit['score'])
+                except AttributeError:
+                    macro_intel = "Macro confluence data pending Gemini initialization."
+                
+                audit['ai_advisory'] = macro_intel
+                dispatch_to_discord(audit)
+        except Exception as e:
+            logger.error(f"❌ Error scanning {ticker}: {e}")
 
 def dispatch_to_discord(audit):
     webhook_url = os.getenv("DISCORD_APEX_WEBHOOK_URL")
@@ -50,17 +55,15 @@ def dispatch_to_discord(audit):
 
     timestamp = datetime.now(onyx_tz).strftime("%H:%M")
     
-    # 🟢 1. Contract Specs & Risk Math
     spec = futures_engine.FUTURES_SPECS.get(audit['ticker'])
-    micro_ticker = spec.get('micro', 'N/A')
+    if not spec: return
     
+    micro_ticker = spec.get('micro', 'N/A')
     full_risk = futures_engine.calculate_risk_params(audit['ticker'], audit['E'], audit['SL'])
-    # Standard 1/10th ratio for most micros (0.10 lot equivalent on your platforms)
+    
+    # Lot Size terminology for Star Trader / PU Prime
     micro_val = spec['tick_value'] / 10 
     micro_risk = full_risk['ticks'] * micro_val
-
-    # 🟢 2. Platform Alias Alignment (Star Trader / PU Prime)
-    # This pulls 'NAS100', 'WTI', etc., from your SYMBOL_MAP
     display_name = data_bridge.SYMBOL_MAP.get(audit['ticker'], {}).get('alias', audit['ticker'])  
     
     content = (
@@ -88,15 +91,14 @@ def dispatch_to_discord(audit):
         logger.info(f"✅ Multi-Contract Dispatch successful for {display_name}")
     except Exception as e:
         logger.error(f"❌ Dispatch failed: {e}")
+
 if __name__ == "__main__":
-    # Initialize Scheduler for 15-minute high-velocity scans
     scheduler = BackgroundScheduler(timezone=onyx_tz)
     scheduler.add_job(run_apex_scan, 'interval', minutes=15, id='apex_scanner')
     
     scheduler.start()
     logger.info("🚀 ONYX APEX: Global Futures Engine Active | 15m Advisory Mode")
 
-    # 🟢 THE RESTART FIX: This loop forces the process to stay open
     try:
         while True:
             time.sleep(10) 
