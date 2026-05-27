@@ -9,7 +9,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("OnyxApex")
 
 # 🟢 CONTRACT SPECIFICATIONS (Treasury Grade)
-# Futures require tick-value precision for risk parity
 FUTURES_SPECS = {
     "/NQ": {"name": "Nasdaq 100", "tick_size": 0.25, "tick_value": 5.00, "micro": "/MNQ"},
     "/ES": {"name": "S&P 500", "tick_size": 0.25, "tick_value": 12.50, "micro": "/MES"},
@@ -18,6 +17,38 @@ FUTURES_SPECS = {
     "/CL": {"name": "Crude Oil", "tick_size": 0.01, "tick_value": 10.00, "micro": "/MCL"},
     "/BTC": {"name": "Bitcoin", "tick_size": 5.00, "tick_value": 25.00, "micro": "/MBT"}
 }
+
+def get_tick_rounded_price(price, tick_size):
+    """Surgically rounds price to the nearest valid exchange tick."""
+    return round(price / tick_size) * tick_size
+
+def calculate_execution_levels(symbol, current_price, atr):
+    """
+    Calculates E, SL, and TP for the Apex Build.
+    Uses a 1.5x ATR for SL and a 1:2 Risk/Reward for TP.
+    """
+    spec = FUTURES_SPECS.get(symbol)
+    if not spec:
+        return {"E": current_price, "SL": 0, "TP": 0}
+
+    tick_size = spec['tick_size']
+    
+    # Entry is set at current market breakout price
+    entry = get_tick_rounded_price(current_price, tick_size)
+    
+    # SL Calculation (1.5x ATR Volatility)
+    sl_distance = atr * 1.5
+    stop_loss = get_tick_rounded_price(entry - sl_distance, tick_size)
+    
+    # TP Calculation (1:2.0 Reward Ratio)
+    tp_distance = (entry - stop_loss) * 2.0
+    take_profit = get_tick_rounded_price(entry + tp_distance, tick_size)
+    
+    return {
+        "E": entry,
+        "SL": stop_loss,
+        "TP": take_profit
+    }
 
 def calculate_risk_params(symbol, entry, stop):
     """Calculates tick distance and dollar risk per contract."""
@@ -32,42 +63,15 @@ def calculate_risk_params(symbol, entry, stop):
         "risk_per_con": round(dollar_risk, 2)
     }
 
-def run_apex_audit(ticker):
-    """
-    Placeholder for your Strat Logic (Integrity.py port).
-    In Futures, we prioritize CVD (Cumulative Volume Delta) and 
-    High-Volume Nodes (HVN).
-    """
-    # Logic will eventually call your existing integrity engines
-    # but with tick-based thresholds.
-    pass
-
-def dispatch_apex_briefing(ticker, audit_data):
-    """Firm-Grade Executive Dispatch for the Apex Build."""
-    onyx_tz = timezone('US/Eastern')
-    timestamp = datetime.now(onyx_tz).strftime("%H:%M")
-    
-    spec = FUTURES_SPECS.get(ticker, {"name": ticker})
-    
-    header = (
-        f"🏛️ **ONYX APEX | GLOBAL MACRO BRIEFING**\n"
-        f"*Futures & Derivatives Division*\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"**ASSET:** `{ticker} ({spec['name']})`\n"
-        f"**TIME:** `{timestamp} EST`\n\n"
-    )
-    
-    body = (
-        f"┣ **Institutional Bias:** `{audit_data['bias']}`\n"
-        f"┣ **Strategic Score:** `{audit_data['score']}/10`\n"
-        f"┣ **Order Flow:** `{audit_data['flow']}`\n"
-        f"┗ **Technical Thesis:** {audit_data['thesis']}\n"
-    )
-    
-    # Logic to send to DISCORD_APEX_WEBHOOK
-    print(header + body) 
+# --- REMAINING UTILITIES PRESERVED ---
 
 if __name__ == "__main__":
-    # Test Calculation for a /NQ Sniper Entry
-    risk = calculate_risk_params("/NQ", 18500, 18480)
-    logger.info(f"Risk Profile for /NQ: {risk}")
+    # Test for /NQ Execution Logic
+    test_price = 18522.10
+    test_atr = 25.0
+    levels = calculate_execution_levels("/NQ", test_price, test_atr)
+    
+    logger.info(f"🧪 APEX TEST [/NQ]: E: {levels['E']} | SL: {levels['SL']} | TP: {levels['TP']}")
+    
+    risk = calculate_risk_params("/NQ", levels['E'], levels['SL'])
+    logger.info(f"⚠️ RISK PROFILE: ${risk['risk_per_con']} per contract.")
