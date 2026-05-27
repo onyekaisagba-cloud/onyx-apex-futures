@@ -15,7 +15,7 @@ logger = logging.getLogger("OnyxApexMain")
 onyx_tz = timezone('US/Eastern')
 
 # 🎯 THE APEX MACRO GRID
-FUTURES_GRID = ["/NQ", "/ES", "/ZN", "/6E", "/CL", "/BTC"]
+FUTURES_GRID = ["/NQ", "/MNQ", "/ES", "/MES", "/ZN", "/MYM", "/6E", "/M6E", "/CL", "/MCL", "/BTC", "/MBT"]
 
 def run_apex_scan():
     logger.info(f"📡 ONYX APEX: Initiating Global Macro Scan...")
