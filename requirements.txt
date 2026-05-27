@@ -1,0 +1,8 @@
+pandas
+requests
+pytz
+apscheduler
+pyyaml
+yahooquery
+python-dotenv
+waitress
