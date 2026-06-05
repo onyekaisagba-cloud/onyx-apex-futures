@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import requests
+import pandas as pd
 import data_bridge
 import strategy_futures
 import futures_engine 
@@ -9,12 +10,10 @@ from datetime import datetime
 from pytz import timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# Setup Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("OnyxApexMain")
 onyx_tz = timezone('US/Eastern')
 
-# 🎯 THE APEX MACRO GRID (Option B: Scan Truth only)
 FUTURES_GRID = ["/NQ", "/ES", "/ZN", "/6E", "/CL", "/BTC"]
 
 def run_apex_scan():
@@ -22,23 +21,22 @@ def run_apex_scan():
     
     for ticker in FUTURES_GRID:
         try:
-            # 1. Fetch Real-Time OHLCV
             data = data_bridge.get_futures_ohlcv(ticker)
             if data is None or data.empty: continue
             
-            # 2. Run High-Conviction Audit
             audit = strategy_futures.run_strat_audit_futures(ticker, data)
             
-            # 3. Gatekeeper: Only dispatch if Score >= 5.0
-            if audit['score'] >= 5.0:
+            # Unified Gatekeeper (Filters out NEUTRAL/Incomplete setups)
+            if audit['score'] >= 5.0 and audit['direction'] != "NEUTRAL":
                 current_price = data['Close'].iloc[-1]
-                # Calculate ATR for SL/TP
                 atr = (data['High'] - data['Low']).rolling(14).mean().iloc[-1]
                 
-                exec_params = futures_engine.calculate_execution_levels(ticker, current_price, atr)
+                # Pass direction dynamically to resolve Long vs Short math
+                exec_params = futures_engine.calculate_execution_levels(
+                    ticker, current_price, atr, direction=audit['direction']
+                )
                 audit.update(exec_params) 
                 
-                # AI Advisory Hook (Safeguarded)
                 try:
                     macro_intel = strategy_futures.get_gemini_macro_advisory(ticker, audit['score'])
                 except AttributeError:
@@ -51,26 +49,27 @@ def run_apex_scan():
 
 def dispatch_to_discord(audit):
     webhook_url = os.getenv("DISCORD_APEX_WEBHOOK_URL")
-    if not webhook_url: return
+    if not webhook_url: 
+        logger.warning("❌ DISCORD_APEX_WEBHOOK_URL environment variable missing.")
+        return
 
     timestamp = datetime.now(onyx_tz).strftime("%H:%M")
-    
     spec = futures_engine.FUTURES_SPECS.get(audit['ticker'])
     if not spec: return
     
-    micro_ticker = spec.get('micro', 'N/A')
+    display_name = data_bridge.SYMBOL_MAP.get(audit['ticker'], {}).get('alias', audit['ticker'])  
     full_risk = futures_engine.calculate_risk_params(audit['ticker'], audit['E'], audit['SL'])
     
-    # Lot Size terminology for Star Trader / PU Prime
+    if not full_risk: return
+    
     micro_val = spec['tick_value'] / 10 
     micro_risk = full_risk['ticks'] * micro_val
-    display_name = data_bridge.SYMBOL_MAP.get(audit['ticker'], {}).get('alias', audit['ticker'])  
     
     content = (
         f"🏛️ **ONYX APEX | MACRO SNIPER SIGNAL**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"**PLATFORM TICKER:** `{display_name}` | **TIME:** `{timestamp} EST`\n"
-        f"┣ **Institutional Bias:** `{audit['bias']}`\n"
+        f"┣ **Directional Bias:** `{audit['direction']} ({audit['bias']})`\n"
         f"┣ **Strategic Score:** `{audit['score']}/10` (High Conviction)\n"
         f"┣ **Technical Thesis:** {audit['thesis']}\n"
         f"┣ ━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -87,18 +86,40 @@ def dispatch_to_discord(audit):
     )
     
     try:
-        requests.post(webhook_url, json={"content": content}, timeout=10)
-        logger.info(f"✅ Multi-Contract Dispatch successful for {display_name}")
+        res = requests.post(webhook_url, json={"content": content}, timeout=10)
+        if res.status_code == 204:
+            logger.info(f"✅ Multi-Contract Dispatch successful for {display_name}")
+        else:
+            logger.error(f"❌ Discord API returned error status: {res.status_code}")
     except Exception as e:
         logger.error(f"❌ Dispatch failed: {e}")
 
+# --- THE LIVE ON-DEMAND WORKFLOW PIPELINE ---
+def execute_system_heartbeat():
+    """Run this diagnostic from the command line to verify end-to-end telemetry."""
+    logger.info("🧪 [HEARTBEAT] Initiating active endpoint validation...")
+    mock_audit = {
+        "ticker": "/NQ",
+        "score": 7.50,
+        "direction": "SHORT",
+        "bias": "DISTRIBUTION",
+        "thesis": "TEST WORKFLOW DIAGNOSTIC: 15m 2-Down Breakdown verified with volume expansion.",
+        "E": 18450.00,
+        "SL": 18510.00,
+        "TP": 18330.00,
+        "ai_advisory": "Test pipeline diagnostic successful. Webhook execution valid."
+    }
+    dispatch_to_discord(mock_audit)
+
 if __name__ == "__main__":
+    # Runs a connection check to your Discord channel immediately upon script initialization
+    execute_system_heartbeat()
+    
     scheduler = BackgroundScheduler(timezone=onyx_tz)
     scheduler.add_job(run_apex_scan, 'interval', minutes=15, id='apex_scanner')
-    
     scheduler.start()
+    
     logger.info("🚀 ONYX APEX: Global Futures Engine Active | 15m Advisory Mode")
-
     try:
         while True:
             time.sleep(10) 
