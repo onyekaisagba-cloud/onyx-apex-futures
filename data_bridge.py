@@ -17,9 +17,8 @@ SYMBOL_MAP = {
 def get_futures_ohlcv(symbol, period="5d", interval="15m"):
     """
     Surgically retrieves OHLCV data for the designated contract.
-    Standardizes the dataframe for the Onyx Apex Strategy module.
+    Standardizes the dataframe index and schema for the Onyx Apex Strategy module.
     """
-    # 🟢 FIX: Extract the 'yahoo' string from the nested dictionary
     mapping = SYMBOL_MAP.get(symbol)
     if not mapping:
         logger.error(f"❌ Symbol {symbol} not recognized in APEX Map.")
@@ -29,18 +28,33 @@ def get_futures_ohlcv(symbol, period="5d", interval="15m"):
 
     try:
         tk = Ticker(yahoo_ticker)
-        # Pulling intraday data
         df = tk.history(period=period, interval=interval)
         
         if df is None or df.empty:
             logger.warning(f"⚠️ No data returned for {symbol} ({yahoo_ticker})")
             return None
 
-        # Clean index for multi-index responses
+        # 🟢 FIX: Bulletproof Index Alignment
+        # Handle cases where yahooquery returns a MultiIndex (symbol, date)
         if isinstance(df.index, pd.MultiIndex):
             df = df.xs(yahoo_ticker)
+        else:
+            # If it's a single index but still contains 'symbol' as a column or index metadata,
+            # reset it to guarantee the datetime string becomes the primary workable index level.
+            if 'date' in df.columns:
+                df.set_index('date', inplace=True)
+            elif df.index.name == 'date':
+                pass # Already correctly positioned
+            else:
+                # Fallback to force clear indexing names
+                df.reset_index(inplace=True)
+                if 'date' in df.columns:
+                    df.set_index('date', inplace=True)
 
-        # Standardizing column names
+        # Ensure index is parsed cleanly into datetime objects for chronological sorting
+        df.index = pd.to_datetime(df.index)
+
+        # Standardizing column names explicitly
         df.rename(columns={
             'open': 'Open',
             'high': 'High',
@@ -48,6 +62,10 @@ def get_futures_ohlcv(symbol, period="5d", interval="15m"):
             'close': 'Close',
             'volume': 'Volume'
         }, inplace=True)
+
+        # Keep only the essential columns required by strategy_futures.py
+        required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        df = df[required_cols]
 
         return df
 
@@ -57,7 +75,9 @@ def get_futures_ohlcv(symbol, period="5d", interval="15m"):
 
 if __name__ == "__main__":
     # Internal Test Call
+    logging.basicConfig(level=logging.INFO)
     logger.info("Testing Apex Data Bridge for /NQ...")
     data = get_futures_ohlcv("/NQ")
     if data is not None:
+        print("\n📊 DATA BRIDGE SANITY CHECK SUCCESSFUL:")
         print(data.tail(5))
